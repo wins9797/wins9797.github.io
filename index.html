@@ -253,6 +253,7 @@
         .leave-badge.annual { background: #eff6ff; color: #2563eb; border-color: #dbeafe; }
         .leave-badge.holiday { background: #f0fdf4; color: #16a34a; border-color: #dcfce7; }
         .leave-badge:hover { transform: scale(1.02); filter: brightness(0.98); }
+        .duration-tag { font-size: 0.7rem; background: rgba(0,0,0,0.05); padding: 1px 4px; border-radius: 3px; margin-left: 4px; }
         .delete-btn { 
             opacity: 0.5;
             cursor: pointer; 
@@ -396,14 +397,27 @@
                     <label class="form-label">人员姓名</label>
                     <input type="text" id="colleagueName" class="form-control" placeholder="请输入姓名" autofocus onkeyup="if(event.keyCode===13) saveLeave()">
                 </div>
-                <div class="form-group">
+                <div class="form-group mb-3">
                     <label class="form-label d-block">休假类型</label>
                     <div class="btn-group w-100" role="group">
-                        <input type="radio" class="btn-check" name="leaveType" id="typeAnnual" value="annual" checked>
+                        <input type="radio" class="btn-check" name="leaveType" id="typeAnnual" value="annual" checked onchange="toggleDurationOptions()">
                         <label class="btn btn-outline-primary" for="typeAnnual">年假 (扣减天数)</label>
                         
-                        <input type="radio" class="btn-check" name="leaveType" id="typeHoliday" value="holiday">
+                        <input type="radio" class="btn-check" name="leaveType" id="typeHoliday" value="holiday" onchange="toggleDurationOptions()">
                         <label class="btn btn-outline-success" for="typeHoliday">节日假 (不扣天数)</label>
+                    </div>
+                </div>
+                <div id="durationOptions" class="form-group mb-3">
+                    <label class="form-label d-block small text-muted">时长 (仅年假有效)</label>
+                    <div class="btn-group w-100 btn-group-sm" role="group">
+                        <input type="radio" class="btn-check" name="leaveDuration" id="durFull" value="full" checked>
+                        <label class="btn btn-outline-secondary" for="durFull">全天 (1天)</label>
+                        
+                        <input type="radio" class="btn-check" name="leaveDuration" id="durMorning" value="morning">
+                        <label class="btn btn-outline-secondary" for="durMorning">上午 (0.5天)</label>
+                        
+                        <input type="radio" class="btn-check" name="leaveDuration" id="durAfternoon" value="afternoon">
+                        <label class="btn btn-outline-secondary" for="durAfternoon">下午 (0.5天)</label>
                     </div>
                 </div>
             </div>
@@ -480,7 +494,8 @@
                     const parts = dateStr.split('-');
                     const d = new Date(parts[0], parts[1] - 1, parts[2]);
                     if (d.getDay() !== 0) { // 0 代表周日
-                        count++;
+                        const duration = record.duration || 'full';
+                        count += (duration === 'full' ? 1 : 0.5);
                     }
                 }
             }
@@ -504,6 +519,9 @@
             const remaining = yearData.total - used;
             const percent = yearData.total > 0 ? Math.min(100, (used / yearData.total) * 100) : 0;
             
+            // 格式化数字：如果是整数则不显示小数点
+            const formatNum = (num) => Number.isInteger(num) ? num : num.toFixed(1);
+
             // 根據剩餘天數決定顏色
             let statusColor = 'bg-primary';
             if (remaining < 0) statusColor = 'bg-danger';
@@ -527,11 +545,11 @@
                     </div>
                     <div class="stat-box">
                         <span class="stat-label">已用</span>
-                        <span class="stat-value text-danger">${used}</span>
+                        <span class="stat-value text-danger">${formatNum(used)}</span>
                     </div>
                     <div class="stat-box">
                         <span class="stat-label">剩余</span>
-                        <span class="stat-value ${remaining < 0 ? 'text-danger' : 'text-success'}">${remaining}</span>
+                        <span class="stat-value ${remaining < 0 ? 'text-danger' : 'text-success'}">${formatNum(remaining)}</span>
                     </div>
                 </div>
                 <div class="progress shadow-sm" style="height: 6px; background-color: #e9ecef;">
@@ -692,9 +710,17 @@
             records.forEach((record, index) => {
                 const typeClass = record.type || 'annual';
                 const typeIcon = typeClass === 'annual' ? 'bi-person-fill' : 'bi-gift-fill';
+                
+                let durationText = '';
+                if (typeClass === 'annual') {
+                    const dur = record.duration || 'full';
+                    if (dur === 'morning') durationText = '<span class="duration-tag">上午</span>';
+                    else if (dur === 'afternoon') durationText = '<span class="duration-tag">下午</span>';
+                }
+
                 content += `
                     <div class="leave-badge ${typeClass}" title="${typeClass === 'annual' ? '年假' : '节日假'}">
-                        <span><i class="bi ${typeIcon} me-1 opacity-75"></i>${record.name}</span>
+                        <span><i class="bi ${typeIcon} me-1 opacity-75"></i>${record.name}${durationText}</span>
                         <i class="bi bi-x-circle-fill delete-btn" onclick="event.stopPropagation(); deleteLeave('${dateStr}', ${index})"></i>
                     </div>
                 `;
@@ -782,8 +808,16 @@
         endDateInput.min = dateStr; // 设置结束日期不能早于开始日期
         document.getElementById('colleagueName').value = '';
         document.getElementById('typeAnnual').checked = true; // 默认选中年假
+        document.getElementById('durFull').checked = true; // 默认选中全天
+        toggleDurationOptions(); // 更新时长选项显示状态
         modal.show();
         setTimeout(() => document.getElementById('colleagueName').focus(), 500);
+    }
+
+    function toggleDurationOptions() {
+        const isAnnual = document.getElementById('typeAnnual').checked;
+        const durationOptions = document.getElementById('durationOptions');
+        durationOptions.style.display = isAnnual ? 'block' : 'none';
     }
 
     function saveLeave() {
@@ -791,6 +825,7 @@
         const startStr = document.getElementById('startDate').value;
         const endStr = document.getElementById('endDate').value;
         const type = document.querySelector('input[name="leaveType"]:checked').value;
+        const duration = document.querySelector('input[name="leaveDuration"]:checked').value;
         
         if (!name) return;
         
@@ -800,10 +835,12 @@
             if (!leaveData[dateKey]) {
                 leaveData[dateKey] = [];
             }
-            // 检查是否已有相同记录
-            const exists = leaveData[dateKey].some(r => r.name === name && r.type === type);
+            // 检查是否已有相同记录 (同名、同类型、同时长)
+            const exists = leaveData[dateKey].some(r => r.name === name && r.type === type && (type !== 'annual' || r.duration === duration));
             if (!exists) {
-                leaveData[dateKey].push({ name: name, type: type });
+                const record = { name: name, type: type };
+                if (type === 'annual') record.duration = duration;
+                leaveData[dateKey].push(record);
             }
         });
 
